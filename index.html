@@ -104,6 +104,20 @@
   summary { cursor: pointer; font-size: 11px; color: var(--dim); letter-spacing: 1px; }
   details input { margin-top: 10px; }
   .footer { text-align: center; color: var(--dim); font-size: 11px; letter-spacing: 2px; margin-top: 30px; }
+  .badge {
+    display: inline-block; font-size: 10px; letter-spacing: 2px;
+    color: var(--red); border: 1px solid var(--red); padding: 2px 8px;
+    margin-top: 8px; text-transform: uppercase;
+  }
+  .hist-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .clear { background: transparent; border: 1px solid var(--red); color: var(--red); padding: 6px 12px; font-size: 11px; }
+  .clear:hover { background: var(--red); color: #05070a; }
+  .hist-item { border: 1px solid var(--line); padding: 12px; margin-bottom: 10px; background: #05070a; }
+  .hist-meta { font-size: 10px; color: var(--dim); letter-spacing: 1px; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 10px; }
+  .hist-text { font-size: 12px; line-height: 1.5; white-space: pre-wrap; color: var(--text); }
+  .hist-copy { background: transparent; border: 1px solid var(--cyan); color: var(--cyan); padding: 4px 10px; font-size: 10px; margin-top: 8px; }
+  .hist-copy:hover { background: var(--cyan); color: #05070a; }
+  .hist-empty { color: var(--dim); font-style: italic; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -112,6 +126,7 @@
     <div class="eyebrow">Signal Tools</div>
     <h1>cover art</h1>
     <div class="sub">paste lyrics // get a cover prompt // feed to image model</div>
+    <div class="badge">v1.2</div>
   </header>
 
   <div class="keybar">
@@ -169,6 +184,14 @@
       <button class="copy" id="copy">Copy</button>
     </div>
     <div class="result empty" id="result">Prompt appears here. Copy it straight into ChatGPT / DALL·E / Midjourney.</div>
+  </div>
+
+  <div class="panel">
+    <div class="hist-head">
+      <label style="margin:0">History log</label>
+      <button class="clear" id="clearhist">Clear</button>
+    </div>
+    <div id="history"><div class="hist-empty">No prompts generated yet.</div></div>
   </div>
 
   <div class="footer">// stay tuned //</div>
@@ -262,16 +285,50 @@ document.getElementById('go').onclick = async () => {
   btn.disabled = true; status.textContent = 'transmitting…'; result.classList.remove('err');
 
   try {
-    let out;
-    if(a){ try { out = await callClaude(a, system, user); } catch(e){ if(g){ status.textContent='claude failed, trying groq…'; out = await callGroq(g, system, user); } else throw e; } }
-    else { out = await callGroq(g, system, user); }
+    let out, usedModel;
+    if(a){ try { out = await callClaude(a, system, user); usedModel='claude'; } catch(e){ if(g){ status.innerHTML='<span class="err">claude failed: '+e.message+'</span> · trying groq…'; out = await callGroq(g, system, user); usedModel='groq (claude failed)'; } else throw e; } }
+    else { out = await callGroq(g, system, user); usedModel='groq'; }
     result.textContent = out;
     result.classList.remove('empty');
-    status.textContent = 'done · '+out.split(/\s+/).length+' words';
+    if(usedModel==='claude' || usedModel==='groq') status.textContent = 'done · '+usedModel+' · '+out.split(/\s+/).length+' words';
+    addHistory(out, opts, usedModel);
   } catch(e){
     status.innerHTML = '<span class="err">'+e.message+'</span>';
   } finally { btn.disabled = false; }
 };
+
+const LS_HIST = 'coverart_history';
+function loadHist(){ try { return JSON.parse(localStorage.getItem(LS_HIST)||'[]'); } catch(e){ return []; } }
+function saveHist(h){ localStorage.setItem(LS_HIST, JSON.stringify(h.slice(0,25))); }
+function addHistory(text, opts, model){
+  const h = loadHist();
+  h.unshift({ text, title: opts.title||'(untitled)', style: opts.style, aspect: opts.aspect, model, ts: Date.now() });
+  saveHist(h); renderHist();
+}
+function renderHist(){
+  const wrap = document.getElementById('history');
+  const h = loadHist();
+  if(!h.length){ wrap.innerHTML = '<div class="hist-empty">No prompts generated yet.</div>'; return; }
+  wrap.innerHTML = h.map((e,i)=>{
+    const when = new Date(e.ts).toLocaleString();
+    const esc = e.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<div class="hist-item">
+      <div class="hist-meta"><span>${e.title} · ${e.style} · ${e.aspect}</span><span>${when}</span></div>
+      <div class="hist-text">${esc}</div>
+      <button class="hist-copy" data-i="${i}">Copy</button>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('.hist-copy').forEach(b=>{
+    b.onclick = () => {
+      const t = loadHist()[+b.dataset.i].text;
+      navigator.clipboard.writeText(t).then(()=>{ const o=b.textContent; b.textContent='Copied'; setTimeout(()=>b.textContent=o,1200); });
+    };
+  });
+}
+document.getElementById('clearhist').onclick = () => {
+  if(confirm('Clear all saved prompts?')){ localStorage.removeItem(LS_HIST); renderHist(); }
+};
+renderHist();
 
 document.getElementById('copy').onclick = () => {
   const t = document.getElementById('result').textContent;
