@@ -118,15 +118,30 @@
   .hist-copy { background: transparent; border: 1px solid var(--cyan); color: var(--cyan); padding: 4px 10px; font-size: 10px; margin-top: 8px; }
   .hist-copy:hover { background: var(--cyan); color: #05070a; }
   .hist-empty { color: var(--dim); font-style: italic; font-size: 12px; }
+  .tabs { display: flex; gap: 0; margin-bottom: 22px; border: 1px solid var(--line); }
+  .tab {
+    flex: 1; background: transparent; color: var(--dim); border: none;
+    padding: 14px; font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+    cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  .tab.active { color: var(--cyan); border-bottom-color: var(--cyan); background: rgba(46,230,230,0.05); }
+  .tabpane { display: none; }
+  .tabpane.active { display: block; }
+  .flags { border: 1px solid var(--red); background: rgba(255,59,80,0.06); padding: 12px; margin-top: 14px; font-size: 12px; line-height: 1.6; }
+  .flags strong { color: var(--red); letter-spacing: 1px; }
+  .flags.clean { border-color: var(--cyan); background: rgba(46,230,230,0.05); }
+  .flags.clean strong { color: var(--cyan); }
+  .rulecheck { font-size: 11px; color: var(--dim); margin-top: 10px; line-height: 1.7; }
+  .rulecheck .ok { color: var(--cyan); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div class="eyebrow">Signal Tools</div>
-    <h1>cover art</h1>
-    <div class="sub">paste lyrics // get a cover prompt // feed to image model</div>
-    <div class="badge">v1.4</div>
+    <h1>signal prep</h1>
+    <div class="sub">cover art prompts // distrokid lyric formatting</div>
+    <div class="badge">v1.6</div>
   </header>
 
   <div class="keybar">
@@ -134,6 +149,12 @@
     <a id="setkey">set keys</a>
   </div>
 
+  <div class="tabs">
+    <button class="tab active" data-tab="cover">Cover Art</button>
+    <button class="tab" data-tab="distrokid">DistroKid Format</button>
+  </div>
+
+  <div class="tabpane active" id="pane-cover">
   <div class="panel">
     <label for="lyrics">Song lyrics</label>
     <textarea id="lyrics" placeholder="Paste the full lyrics here…"></textarea>
@@ -193,6 +214,26 @@
     </div>
     <div id="history"><div class="hist-empty">No prompts generated yet.</div></div>
   </div>
+  </div><!-- /pane-cover -->
+
+  <div class="tabpane" id="pane-distrokid">
+  <div class="panel">
+    <label for="dk-lyrics">Song lyrics (with section tags is fine)</label>
+    <textarea id="dk-lyrics" placeholder="Paste lyrics here — [Verse 1], [Chorus] tags and all. The formatter strips and cleans everything to DistroKid's rules."></textarea>
+    <button class="generate" id="dk-go">Format for DistroKid</button>
+    <div class="status" id="dk-status"></div>
+  </div>
+
+  <div class="panel">
+    <div class="out-head">
+      <label style="margin:0">DistroKid-ready lyrics</label>
+      <button class="copy" id="dk-copy">Copy</button>
+    </div>
+    <div class="result empty" id="dk-result">Formatted lyrics appear here — paste straight into the DistroKid lyrics box.</div>
+    <div id="dk-flags"></div>
+    <div class="rulecheck" id="dk-rules"></div>
+  </div>
+  </div><!-- /pane-distrokid -->
 
   <div class="footer">// stay tuned //</div>
 </div>
@@ -231,15 +272,18 @@ function buildSystem(opts){
   return `You are an art director generating a single image-generation prompt for song cover art.
 Read the lyrics and extract the dominant CONCRETE image, mood, and emotional core. Do NOT summarize the lyrics or quote them. Translate feeling into a physical scene.
 
-Output ONLY the final prompt as one cohesive paragraph (no headers, no preamble, no markdown, no options, no explanation). It must be directly pasteable into an image model.
+Output format — produce EXACTLY two parts and nothing else:
+1. A first line that is a direct instruction to an image generator, beginning with "Make an image" — e.g. "Make an image in a ${opts.aspect} format:" 
+2. Then the prompt itself as one cohesive paragraph.
+No headers, no markdown, no preamble before the instruction line, no commentary after the paragraph. The whole thing must be copy-pasteable straight into ChatGPT as-is.
 
-The prompt must specify: the central subject/scene, setting, lighting, color palette, mood, texture/medium, composition, and aspect ratio. End with the aspect ratio.
+The prompt paragraph must specify: the central subject/scene, setting, lighting, color palette, mood, texture/medium, composition, and aspect ratio. End the paragraph with the aspect ratio, and include the literal instruction "Do not render any text, letters, or words anywhere in the image."
 
 Art direction: ${STYLE_NOTES[opts.style]}
 Aspect ratio: ${opts.aspect}.
 ${opts.faceless==='yes' ? 'FACELESS: no identifiable human faces — use silhouettes, backs of heads, obscured, cropped, or turned-away figures, or no figure at all.' : 'Faces are allowed.'}
-${opts.title ? 'Leave clear negative space where a title could be placed; do not render any text or letters in the image.' : 'Do not render any text or letters in the image.'}
-Keep it vivid but under 130 words.`;
+${opts.title ? 'Leave clear negative space where a title could be placed.' : ''}
+Keep the prompt paragraph vivid but under 130 words.`;
 }
 
 async function callClaude(key, system, user){
@@ -335,6 +379,131 @@ document.getElementById('copy').onclick = () => {
   if(!t || document.getElementById('result').classList.contains('empty')) return;
   navigator.clipboard.writeText(t).then(()=>{
     const b = document.getElementById('copy'); const o=b.textContent;
+    b.textContent='Copied'; setTimeout(()=>b.textContent=o,1200);
+  });
+};
+
+// ─── TABS ───────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tabpane').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('pane-'+t.dataset.tab).classList.add('active');
+  };
+});
+
+// ─── DISTROKID FORMATTER (deterministic, no API) ───────────────────────────
+// Rules from DistroKid: strip section tags & extra text, no vocalist name,
+// write out repeats (no "Chorus 2x"), capitalize each line's first letter,
+// no end-of-line punctuation, one sentence per line, blank lines only between
+// sections, no excessively long lines, leave profanity uncensored (just flag it).
+
+const PROFANITY = /\b(fuck(?:ing|ed|er|s)?|shit(?:ty|s)?|bitch(?:es|in)?|damn|goddamn|ass(?:hole|es)?|hell|bastard|cunt|dick(?:head)?|piss(?:ed)?|cock|whore|slut|nigga|motherfucker)\b/gi;
+
+// lines that are pure structural tags or studio directions, not lyrics
+const TAG_LINE = /^\s*[\[\(]?\s*(intro|verse|pre[- ]?chorus|chorus|hook|bridge|outro|refrain|interlude|breakdown|drop|post[- ]?chorus|coda|ad[- ]?lib|instrumental|solo|tag|vamp)\b.*$/i;
+const REPEAT_NOTE = /\(?\s*(x\s?\d+|\d+\s?x|repeat|chorus\s?\d?x|2x|3x|4x)\s*\)?/gi;
+
+function stripEndPunct(line){
+  // remove trailing . , ; : ! ? — but keep apostrophes inside words and ? if you want questions? DistroKid says no end punctuation, so strip all.
+  return line.replace(/[\.,;:!\?\u2026\u2014\-\s]+$/u, '').replace(/^\s+/, '');
+}
+function capFirst(line){
+  if(!line) return line;
+  // find first letter and uppercase it
+  return line.replace(/^([^A-Za-z]*)([a-z])/, (m,p,c) => p + c.toUpperCase());
+}
+
+function formatForDistroKid(raw){
+  const flags = { profanity: new Set(), repeatNotes: false, longLines: [], removedTags: 0 };
+  // normalize line endings, split
+  let lines = raw.replace(/\r\n?/g,'\n').split('\n');
+  const out = [];
+  let lastWasBlank = true; // suppress leading blanks
+
+  for(let rawLine of lines){
+    let line = rawLine.trim();
+
+    if(line === ''){
+      if(!lastWasBlank){ out.push(''); lastWasBlank = true; }
+      continue;
+    }
+    // strip pure section/tag lines entirely
+    if(TAG_LINE.test(line) && line.replace(/[\[\]\(\)]/g,'').trim().split(/\s+/).length <= 4){
+      flags.removedTags++;
+      // a tag line marks a section boundary -> ensure a blank separates sections
+      if(!lastWasBlank){ out.push(''); lastWasBlank = true; }
+      continue;
+    }
+    // detect & strip inline repeat notes like (x2), "Chorus 2x"
+    if(REPEAT_NOTE.test(line)){ flags.repeatNotes = true; line = line.replace(REPEAT_NOTE,'').trim(); if(line==='') continue; }
+
+    // collect profanity (flag only, do not censor)
+    const m = line.match(PROFANITY);
+    if(m) m.forEach(w => flags.profanity.add(w.toLowerCase()));
+
+    // strip end punctuation, capitalize first letter
+    line = capFirst(stripEndPunct(line));
+
+    // flag excessively long lines (rough: >12 words or >60 chars)
+    const words = line.split(/\s+/).length;
+    if(words > 12 || line.length > 60) flags.longLines.push(line);
+
+    out.push(line);
+    lastWasBlank = false;
+  }
+  // trim trailing blanks
+  while(out.length && out[out.length-1]==='') out.pop();
+  // collapse any double blank lines to single
+  const cleaned = [];
+  for(const l of out){ if(l==='' && cleaned[cleaned.length-1]==='') continue; cleaned.push(l); }
+
+  return { text: cleaned.join('\n'), flags };
+}
+
+document.getElementById('dk-go').onclick = () => {
+  const raw = document.getElementById('dk-lyrics').value.trim();
+  const status = document.getElementById('dk-status');
+  const result = document.getElementById('dk-result');
+  const flagsEl = document.getElementById('dk-flags');
+  const rulesEl = document.getElementById('dk-rules');
+  if(!raw){ status.innerHTML = '<span class="err">Paste lyrics first.</span>'; return; }
+
+  const { text, flags } = formatForDistroKid(raw);
+  result.textContent = text;
+  result.classList.remove('empty');
+  status.textContent = 'formatted · ' + text.split('\n').filter(l=>l!=='').length + ' lyric lines';
+
+  // profanity flag
+  if(flags.profanity.size){
+    flagsEl.className = 'flags';
+    flagsEl.innerHTML = '<strong>EXPLICIT WORDS FOUND:</strong> ' + [...flags.profanity].join(', ') +
+      '<br>DistroKid says: leave these in the lyrics UNLESS they\'re bleeped/dropped in your actual audio. Left uncensored above. Mark the track <strong>Explicit</strong> in DistroKid\'s metadata if the audio contains them.';
+  } else {
+    flagsEl.className = 'flags clean';
+    flagsEl.innerHTML = '<strong>NO EXPLICIT WORDS DETECTED</strong> — likely safe to mark Clean, but confirm against your final audio.';
+  }
+
+  // rule checklist
+  let rc = '<strong style="color:var(--cyan);letter-spacing:1px;">APPLIED:</strong><br>';
+  rc += '<span class="ok">✓</span> Stripped ' + flags.removedTags + ' section tag line' + (flags.removedTags===1?'':'s') + ' (Verse/Chorus/etc.)<br>';
+  rc += '<span class="ok">✓</span> Capitalized first letter of each line<br>';
+  rc += '<span class="ok">✓</span> Removed end-of-line punctuation<br>';
+  rc += '<span class="ok">✓</span> Blank lines only between sections<br>';
+  if(flags.repeatNotes) rc += '<span class="ok">✓</span> Removed repeat notes (x2 / "Chorus 2x") — make sure repeated sections are written out in full above<br>';
+  if(flags.longLines.length){
+    rc += '<br><strong style="color:var(--red);">CHECK THESE LONG LINES</strong> (DistroKid prefers one sentence per line — split if they\'re run-ons):<br>';
+    rc += flags.longLines.map(l => '· ' + l).join('<br>');
+  }
+  rulesEl.innerHTML = rc;
+};
+
+document.getElementById('dk-copy').onclick = () => {
+  const t = document.getElementById('dk-result').textContent;
+  if(!t || document.getElementById('dk-result').classList.contains('empty')) return;
+  navigator.clipboard.writeText(t).then(()=>{
+    const b = document.getElementById('dk-copy'); const o=b.textContent;
     b.textContent='Copied'; setTimeout(()=>b.textContent=o,1200);
   });
 };
