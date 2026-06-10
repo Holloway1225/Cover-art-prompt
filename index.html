@@ -141,7 +141,7 @@
     <div class="eyebrow">Signal Tools</div>
     <h1>signal prep</h1>
     <div class="sub">cover art prompts // distrokid lyric formatting</div>
-    <div class="badge">v1.7</div>
+    <div class="badge">v1.8</div>
   </header>
 
   <div class="keybar">
@@ -429,8 +429,11 @@ function formatForDistroKid(raw){
       if(!lastWasBlank){ out.push(''); lastWasBlank = true; }
       continue;
     }
-    // strip divider / horizontal-rule lines (___, ---, ***, ===, ~~~, •••, etc.)
-    if(/^[\s_\-–—=*~•·.\u2022\u2014\u2013]{2,}$/.test(line)){
+    // strip divider / horizontal-rule lines (___ --- *** === ▁▁ ‾‾ ＿ ⸻ etc.)
+    // ANY line with no letters and no digits, 1+ visible chars, is a separator —
+    // a lyric line always contains at least one letter or number.
+    const visibleChars = line.replace(/\s+/g,'');
+    if(visibleChars.length >= 1 && !/[\p{L}\p{N}]/u.test(visibleChars)){
       flags.removedDividers++;
       // treat as a section break -> ensure a single blank separates sections
       if(!lastWasBlank){ out.push(''); lastWasBlank = true; }
