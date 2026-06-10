@@ -141,7 +141,7 @@
     <div class="eyebrow">Signal Tools</div>
     <h1>signal prep</h1>
     <div class="sub">cover art prompts // distrokid lyric formatting</div>
-    <div class="badge">v1.6</div>
+    <div class="badge">v1.7</div>
   </header>
 
   <div class="keybar">
@@ -416,7 +416,7 @@ function capFirst(line){
 }
 
 function formatForDistroKid(raw){
-  const flags = { profanity: new Set(), repeatNotes: false, longLines: [], removedTags: 0 };
+  const flags = { profanity: new Set(), repeatNotes: false, longLines: [], removedTags: 0, removedDividers: 0 };
   // normalize line endings, split
   let lines = raw.replace(/\r\n?/g,'\n').split('\n');
   const out = [];
@@ -426,6 +426,13 @@ function formatForDistroKid(raw){
     let line = rawLine.trim();
 
     if(line === ''){
+      if(!lastWasBlank){ out.push(''); lastWasBlank = true; }
+      continue;
+    }
+    // strip divider / horizontal-rule lines (___, ---, ***, ===, ~~~, •••, etc.)
+    if(/^[\s_\-–—=*~•·.\u2022\u2014\u2013]{2,}$/.test(line)){
+      flags.removedDividers++;
+      // treat as a section break -> ensure a single blank separates sections
       if(!lastWasBlank){ out.push(''); lastWasBlank = true; }
       continue;
     }
@@ -488,6 +495,7 @@ document.getElementById('dk-go').onclick = () => {
   // rule checklist
   let rc = '<strong style="color:var(--cyan);letter-spacing:1px;">APPLIED:</strong><br>';
   rc += '<span class="ok">✓</span> Stripped ' + flags.removedTags + ' section tag line' + (flags.removedTags===1?'':'s') + ' (Verse/Chorus/etc.)<br>';
+  if(flags.removedDividers) rc += '<span class="ok">✓</span> Removed ' + flags.removedDividers + ' divider line' + (flags.removedDividers===1?'':'s') + ' (____ / ---- separators)<br>';
   rc += '<span class="ok">✓</span> Capitalized first letter of each line<br>';
   rc += '<span class="ok">✓</span> Removed end-of-line punctuation<br>';
   rc += '<span class="ok">✓</span> Blank lines only between sections<br>';
