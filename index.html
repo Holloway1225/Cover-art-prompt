@@ -141,7 +141,7 @@
     <div class="eyebrow">Signal Tools</div>
     <h1>signal prep</h1>
     <div class="sub">cover art prompts // distrokid lyric formatting</div>
-    <div class="badge">v1.8</div>
+    <div class="badge">v1.9</div>
   </header>
 
   <div class="keybar">
@@ -220,7 +220,10 @@
   <div class="panel">
     <label for="dk-lyrics">Song lyrics (with section tags is fine)</label>
     <textarea id="dk-lyrics" placeholder="Paste lyrics here — [Verse 1], [Chorus] tags and all. The formatter strips and cleans everything to DistroKid's rules."></textarea>
-    <button class="generate" id="dk-go">Format for DistroKid</button>
+    <div style="display:flex;gap:12px;margin-top:20px;">
+      <button class="generate" id="dk-go" style="margin-top:0;flex:1;">Format for DistroKid</button>
+      <button class="clear" id="dk-clear" style="padding:14px 22px;font-size:13px;letter-spacing:2px;">Clear</button>
+    </div>
     <div class="status" id="dk-status"></div>
   </div>
 
@@ -401,9 +404,25 @@ document.querySelectorAll('.tab').forEach(t => {
 
 const PROFANITY = /\b(fuck(?:ing|ed|er|s)?|shit(?:ty|s)?|bitch(?:es|in)?|damn|goddamn|ass(?:hole|es)?|hell|bastard|cunt|dick(?:head)?|piss(?:ed)?|cock|whore|slut|nigga|motherfucker)\b/gi;
 
-// lines that are pure structural tags or studio directions, not lyrics
-const TAG_LINE = /^\s*[\[\(]?\s*(intro|verse|pre[- ]?chorus|chorus|hook|bridge|outro|refrain|interlude|breakdown|drop|post[- ]?chorus|coda|ad[- ]?lib|instrumental|solo|tag|vamp)\b.*$/i;
+// lines that are pure structural tags or studio directions, not lyrics.
+// Matches the section keyword ANYWHERE inside the line (so "[Final Chorus]",
+// "[Final Chorus (Breakdown)]", "[Chorus 2]" all strip), not just at the start.
+const SECTION_WORD = /\b(intro|verse|pre[- ]?chorus|chorus|hook|bridge|outro|refrain|interlude|breakdown|drop|post[- ]?chorus|coda|ad[- ]?lib|instrumental|solo|vamp|hook|pre|tag)\b/i;
 const REPEAT_NOTE = /\(?\s*(x\s?\d+|\d+\s?x|repeat|chorus\s?\d?x|2x|3x|4x)\s*\)?/gi;
+
+// Is this line a section tag that should be removed entirely?
+// Strong signal: wrapped in [ ] or ( ), OR a short standalone line containing a section word.
+function isSectionTag(line){
+  const bare = line.replace(/[\[\]\(\)]/g,'').trim();
+  const wordCount = bare.split(/\s+/).filter(Boolean).length;
+  const hasSectionWord = SECTION_WORD.test(bare);
+  // bracketed line containing a section word -> always a tag
+  const bracketed = /^[\[\(].*[\]\)]\s*$/.test(line.trim());
+  if(bracketed && hasSectionWord) return true;
+  // unbracketed but short (<=4 words) and contains a section word at the start -> tag
+  if(!bracketed && hasSectionWord && wordCount <= 4 && SECTION_WORD.test(bare.split(/\s+/)[0]||'')) return true;
+  return false;
+}
 
 function stripEndPunct(line){
   // remove trailing . , ; : ! ? — but keep apostrophes inside words and ? if you want questions? DistroKid says no end punctuation, so strip all.
@@ -440,7 +459,7 @@ function formatForDistroKid(raw){
       continue;
     }
     // strip pure section/tag lines entirely
-    if(TAG_LINE.test(line) && line.replace(/[\[\]\(\)]/g,'').trim().split(/\s+/).length <= 4){
+    if(isSectionTag(line)){
       flags.removedTags++;
       // a tag line marks a section boundary -> ensure a blank separates sections
       if(!lastWasBlank){ out.push(''); lastWasBlank = true; }
@@ -508,6 +527,16 @@ document.getElementById('dk-go').onclick = () => {
     rc += flags.longLines.map(l => '· ' + l).join('<br>');
   }
   rulesEl.innerHTML = rc;
+};
+
+document.getElementById('dk-clear').onclick = () => {
+  document.getElementById('dk-lyrics').value = '';
+  document.getElementById('dk-result').textContent = 'Formatted lyrics appear here — paste straight into the DistroKid lyrics box.';
+  document.getElementById('dk-result').classList.add('empty');
+  document.getElementById('dk-flags').innerHTML = '';
+  document.getElementById('dk-rules').innerHTML = '';
+  document.getElementById('dk-status').textContent = '';
+  document.getElementById('dk-lyrics').focus();
 };
 
 document.getElementById('dk-copy').onclick = () => {
