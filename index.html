@@ -141,7 +141,7 @@
     <div class="eyebrow">Signal Tools</div>
     <h1>signal prep</h1>
     <div class="sub">cover art prompts // distrokid lyric formatting</div>
-    <div class="badge">v1.9</div>
+    <div class="badge">v2.0</div>
   </header>
 
   <div class="keybar">
@@ -410,17 +410,19 @@ const PROFANITY = /\b(fuck(?:ing|ed|er|s)?|shit(?:ty|s)?|bitch(?:es|in)?|damn|go
 const SECTION_WORD = /\b(intro|verse|pre[- ]?chorus|chorus|hook|bridge|outro|refrain|interlude|breakdown|drop|post[- ]?chorus|coda|ad[- ]?lib|instrumental|solo|vamp|hook|pre|tag)\b/i;
 const REPEAT_NOTE = /\(?\s*(x\s?\d+|\d+\s?x|repeat|chorus\s?\d?x|2x|3x|4x)\s*\)?/gi;
 
-// Is this line a section tag that should be removed entirely?
-// Strong signal: wrapped in [ ] or ( ), OR a short standalone line containing a section word.
+// Is this line a section tag or production cue that should be removed entirely?
+// Rule 1: a FULLY bracketed line ([...] or (...) wrapping the whole line) is always
+//   a cue — section tag, vocal direction ([Whispered], [Spoken], [Clean vocals]),
+//   or studio note. A real lyric is never entirely enclosed in brackets.
+// Rule 2: an unbracketed short line (<=4 words) starting with a section word is a tag.
 function isSectionTag(line){
-  const bare = line.replace(/[\[\]\(\)]/g,'').trim();
+  const t = line.trim();
+  // Rule 1: whole line wrapped in [ ] or ( )
+  if(/^\[.*\]$/.test(t) || /^\(.*\)$/.test(t)) return true;
+  // Rule 2: bare section label, not bracketed
+  const bare = t.replace(/[\[\]\(\)]/g,'').trim();
   const wordCount = bare.split(/\s+/).filter(Boolean).length;
-  const hasSectionWord = SECTION_WORD.test(bare);
-  // bracketed line containing a section word -> always a tag
-  const bracketed = /^[\[\(].*[\]\)]\s*$/.test(line.trim());
-  if(bracketed && hasSectionWord) return true;
-  // unbracketed but short (<=4 words) and contains a section word at the start -> tag
-  if(!bracketed && hasSectionWord && wordCount <= 4 && SECTION_WORD.test(bare.split(/\s+/)[0]||'')) return true;
+  if(SECTION_WORD.test(bare) && wordCount <= 4 && SECTION_WORD.test(bare.split(/\s+/)[0]||'')) return true;
   return false;
 }
 
